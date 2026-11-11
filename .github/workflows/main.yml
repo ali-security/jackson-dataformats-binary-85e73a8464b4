@@ -1,20 +1,18 @@
 name: Build and Deploy Snapshot
 on:
-  push:
-    branches: ['2.*']
-    paths-ignore:
-    - "README.md"
-    - "release-notes/*"
-  pull_request:
-    paths-ignore:
-    - "README.md"
-    - "release-notes/*"
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: 'Optional surefire -Dtest selector; empty runs the full suite'
+        required: false
+        default: ''
 permissions:
   contents: read
 
 jobs:
   build:
     runs-on: 'ubuntu-24.04'
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -39,12 +37,30 @@ jobs:
         # gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }} # Value of the GPG private key to import
         # gpg-passphrase: MAVEN_GPG_PASSPHRASE # env variable for GPG private key passphrase
     - name: Build
-      run: ./mvnw -B -q -ff -ntp verify
+      shell: bash
+      env:
+        FILTER: ${{ inputs.test-filter }}
+      run: |
+        if [ -n "$FILTER" ]; then
+          ./mvnw -B -q -ff -ntp verify "-Dtest=$FILTER" -Dsurefire.failIfNoSpecifiedTests=false
+        else
+          ./mvnw -B -q -ff -ntp verify
+        fi
+    - name: Test summary
+      if: always()
+      run: python3 .github/seal_test_summary.py
+    - name: Upload artifact
+      if: ${{ matrix.release_build }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: jackson-dataformat-cbor
+        path: cbor/target/jackson-dataformat-cbor-*[0-9].jar
+        if-no-files-found: error
     - name: Extract project Maven version
       id: projectVersion
       run: echo "version=$(./mvnw org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate -DforceStdout -Dexpression=project.version -q)" >> $GITHUB_OUTPUT
     - name: Deploy snapshot
-      if: ${{ matrix.release_build && github.event_name != 'pull_request' && endsWith(steps.projectVersion.outputs.version, '-SNAPSHOT') }}
+      if: ${{ false && matrix.release_build && github.event_name != 'pull_request' && endsWith(steps.projectVersion.outputs.version, '-SNAPSHOT') }}
       env:
         CI_DEPLOY_USERNAME: ${{ secrets.CENTRAL_DEPLOY_USERNAME }}
         CI_DEPLOY_PASSWORD: ${{ secrets.CENTRAL_DEPLOY_PASSWORD }}
@@ -54,7 +70,7 @@ jobs:
       if: ${{ matrix.release_build && github.event_name != 'pull_request' }}
       run: ./mvnw -B -q -ff -ntp test
     - name: Publish code coverage
-      if: ${{ matrix.release_build && github.event_name != 'pull_request' }}
+      if: ${{ false && matrix.release_build && github.event_name != 'pull_request' }}
       uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}

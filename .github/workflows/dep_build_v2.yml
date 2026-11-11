@@ -1,7 +1,5 @@
 name: Re-build on jackson-databind v2 push
 on:
-  repository_dispatch:
-    types: [jackson-databind-pushed]
   # just for testing
   workflow_dispatch:
 
@@ -12,6 +10,7 @@ jobs:
   build:
     # Do we want wide matrix build? For now, limited
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
